@@ -99,7 +99,7 @@ oci-build: clean oci-build-amd64 oci-build-arm64
 .PHONY: oci-build-amd64
 oci-build-amd64: clean
 	# Build the container image for amd64
-	${CONTAINER_MANAGER} build --platform linux/amd64 --manifest $(IMG)-amd64 -f oci/Containerfile .
+	sudo ${CONTAINER_MANAGER} build --platform linux/amd64 --manifest $(IMG)-amd64 -f oci/Containerfile .
 
 # Build for arm64 architecture only
 .PHONY: oci-build-arm64
