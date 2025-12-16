@@ -12,6 +12,7 @@ ENV PULUMI_URL="${PULUMI_BASE_URL}-linux-x64.tar.gz"
 
 # go toolset has VERSION env with go minor version this is conflicting our version management
 RUN unset VERSION \
+    && go mod vendor \
     && GOARCH=${TARGETARCH} make build \
     && if [ "$TARGETARCH" = "arm64" ]; then export PULUMI_URL="${PULUMI_BASE_URL}-linux-arm64.tar.gz"; fi \
     && echo ${PULUMI_URL} \
