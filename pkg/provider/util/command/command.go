@@ -12,7 +12,7 @@ import (
 const (
 	// remoteCommandTimeout int = 300
 	// https://www.pulumi.com/docs/intro/concepts/resources/options/customtimeouts/
-	RemoteTimeout string = "40m"
+	RemoteTimeout string = "25m"
 
 	// https://bugs.launchpad.net/ubuntu/+source/cloud-init/+bug/2048522
 	CommandCloudInitWait string = "sudo cloud-init status --long --wait || [[ $? -eq 2 || $? -eq 0 ]]"

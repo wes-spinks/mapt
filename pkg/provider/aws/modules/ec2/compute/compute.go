@@ -296,6 +296,7 @@ func (compute *Compute) Readiness(ctx *pulumi.Context,
 	return err
 }
 
+
 // Check if compute is healthy based on running a remote cmd
 func (compute *Compute) RunCommand(ctx *pulumi.Context,
 	cmd string,
@@ -305,25 +306,24 @@ func (compute *Compute) RunCommand(ctx *pulumi.Context,
 	b *bastion.BastionResult,
 	dependecies []pulumi.Resource) (*remote.Command, error) {
 
-    // --- START OF CUSTOM INJECTION (Properly Indented) ---
 	resourceName := resourcesUtil.GetResourceName(prefix, id, "cmd")
-    
+	
+	// Debug: Always log when this function is called
+	log.Printf("[MAPT-DEBUG] RunCommand called: resourceName=%s, cmd=%q", resourceName, cmd)
+
 	// Check if this is the target SSH readiness check
 	if strings.Contains(resourceName, "ssh-readiness") && cmd == command.CommandPing {
-		
-        // Total wait time is 18 minutes (9 iterations * 120 seconds).
+		log.Printf("[MAPT-DEBUG] SSH BYPASS TRIGGERED for %s", resourceName)
+
 		const iterations = 9
-		const sleepDurationSeconds = 120 // 2 minutes
+		const sleepDurationSeconds = 120
 
-		log.Printf("SSH Readiness Check BYPASS: (Resource: %s) replaced with a %d-loop sleep check.",
-			resourceName, iterations)
+		log.Printf(
+			"SSH Readiness Check BYPASS: (Resource: %s) replaced with a %d-loop sleep check.",
+			resourceName, iterations,
+		)
 
-        // Shell loop replaces the original readiness check
-        // Loops 9 times, sleeping for 120s each time
-        // Log completion and returns success
-        // Loop ensures command is running/sending output to keep the connections alive
-        
-		cmd = fmt.Sprintf(`
+		sleepScript := fmt.Sprintf(`
 echo "Starting 18-minute SSH readiness bypass (9 x 2min sleeps)..."
 for i in $(seq 1 %d); do
     echo "Sleep iteration $i of %d (2 minutes)..."
@@ -331,9 +331,29 @@ for i in $(seq 1 %d); do
 done
 echo "Sleep complete. Returning success for SSH readiness check."
 `, iterations, iterations, sleepDurationSeconds)
-	}
-    // --- END OF CUSTOM INJECTION ---
 
+		// NOTE: Still requires Connection - the command runs on the REMOTE host
+		return remote.NewCommand(
+			ctx,
+			resourceName,
+			&remote.CommandArgs{
+				Connection: remoteCommandArgs(compute, mk, username, b),
+				Create:     pulumi.String(sleepScript),
+				Update:     pulumi.String(sleepScript),
+			},
+			pulumi.Timeouts(
+				&pulumi.CustomTimeouts{
+					Create: command.RemoteTimeout,
+					Update: command.RemoteTimeout,
+				}),
+			pulumi.DependsOn(dependecies),
+		)
+	}
+
+	log.Printf("[MAPT-DEBUG] NO BYPASS - resourceName contains 'ssh-readiness': %v, cmd==CommandPing: %v",
+		strings.Contains(resourceName, "ssh-readiness"), cmd == command.CommandPing)
+
+	// --- Original logic ---
 	ca := &remote.CommandArgs{
 		Connection: remoteCommandArgs(compute, mk, username, b),
 		Create:     pulumi.String(cmd),
@@ -343,12 +363,13 @@ echo "Sleep complete. Returning success for SSH readiness check."
 		ca.Logging = remote.LoggingNone
 	}
 	return remote.NewCommand(ctx,
-		resourcesUtil.GetResourceName(prefix, id, "cmd"),
+		resourceName,
 		ca,
 		pulumi.Timeouts(
 			&pulumi.CustomTimeouts{
 				Create: command.RemoteTimeout,
-				Update: command.RemoteTimeout}),
+				Update: command.RemoteTimeout,
+			}),
 		pulumi.DependsOn(dependecies))
 }
 
