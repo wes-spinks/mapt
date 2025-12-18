@@ -2,6 +2,9 @@ module github.com/redhat-developer/mapt
 
 go 1.24.7
 
+// Use local code instead of fetching from upstream
+replace github.com/redhat-developer/mapt => ./
+
 require (
 	github.com/coocood/freecache v1.2.4
 	github.com/pulumi/pulumi-command/sdk v1.1.3

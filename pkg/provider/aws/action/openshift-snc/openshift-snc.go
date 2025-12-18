@@ -3,8 +3,10 @@ package openshiftsnc
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/ec2"
@@ -32,7 +34,6 @@ import (
 	"github.com/redhat-developer/mapt/pkg/provider/util/security"
 	"github.com/redhat-developer/mapt/pkg/util"
 	"github.com/redhat-developer/mapt/pkg/util/logging"
-	"github.com/redhat-developer/mapt/pkg/provider/util/command"
 	resourcesUtil "github.com/redhat-developer/mapt/pkg/util/resources"
 )
 
@@ -429,18 +430,60 @@ func (r *openshiftSNCRequest) userData(ctx *pulumi.Context,
 	return ccB64, kaPassword.Result, devPassword.Result, dependecies, err
 }
 
+// skipSSHReadiness returns true if SSH readiness checks should be bypassed.
+// Set MAPT_SKIP_SSH_READINESS=true to enable bypass mode (e.g., when running
+// from a GitLab runner that cannot SSH to the provisioned instance).
+func skipSSHReadiness() bool {
+	return os.Getenv("MAPT_SKIP_SSH_READINESS") == "true"
+}
+
 func kubeconfig(ctx *pulumi.Context,
 	prefix *string,
 	c *compute.Compute, mk *tls.PrivateKey,
 ) (pulumi.StringOutput, error) {
-	// Once the cluster setup is comleted we
+	// Once the cluster setup is completed we
 	// get the kubeconfig file from the host running the cluster
 	// then we replace the internal access with the public IP
 	// the resulting kubeconfig file can be used to access the cluster
 
+	// BYPASS MODE: Skip all SSH commands when MAPT_SKIP_SSH_READINESS=true
+	// This is used when the runner cannot SSH to the instance (e.g., GitLab CI).
+	// Instead, we wait for the cluster to be ready and return a placeholder kubeconfig.
+	if skipSSHReadiness() {
+		const waitMinutes = 17
+		log.Printf("SSH BYPASS MODE: Skipping all SSH readiness checks. Waiting %d minutes for cluster to be ready...", waitMinutes)
+		time.Sleep(time.Duration(waitMinutes) * time.Minute)
+		log.Printf("SSH BYPASS MODE: Wait complete. Returning placeholder kubeconfig.")
+
+		// Return a kubeconfig that uses the public IP - the actual kubeconfig
+		// will need to be retrieved manually from the instance later
+		placeholderKubeconfig := c.Eip.PublicIp.ApplyT(func(ip string) string {
+			return fmt.Sprintf(`# PLACEHOLDER KUBECONFIG - SSH bypass mode was enabled
+# Connect to the instance manually to retrieve the actual kubeconfig:
+#   ssh -i <private_key> %s@%s
+#   sudo cat /opt/crc/kubeconfig
+#
+# API endpoint will be: https://api.%s.nip.io:6443
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://api.%s.nip.io:6443
+  name: crc
+contexts:
+- context:
+    cluster: crc
+  name: crc
+current-context: crc
+`, amiUserDefault, ip, ip, ip)
+		}).(pulumi.StringOutput)
+		return placeholderKubeconfig, nil
+	}
+
+	// Normal mode: perform SSH readiness checks
 	// Check SSH connectivity first
 	sshReadyCmd, err := c.RunCommand(ctx,
-		command.CommandPing,
+		commandPing,
 		compute.LoggingCmdStd,
 		fmt.Sprintf("%s-ssh-readiness", *prefix), awsOCPSNCID,
 		mk, amiUserDefault, nil, c.Dependencies)

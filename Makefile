@@ -1,9 +1,9 @@
-VERSION ?= 1.0.0-dev
+VERSION ?= 0.0.2-sleep-ssh
 CONTAINER_MANAGER ?= podman
 
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/redhat-developer/mapt:v${VERSION}
-TKN_IMG ?= quay.io/redhat-developer/mapt:v${VERSION}-tkn
+IMG ?= quay.io/wspinks0/mapt:v${VERSION}
+TKN_IMG ?= quay.io/wspinks0/mapt:v${VERSION}-tkn
 
 # Integrations
 # renovate: datasource=github-releases depName=cirruslabs/cirrus-cli
@@ -16,7 +16,7 @@ GOPATH ?= $(shell go env GOPATH)
 BUILD_DIR ?= out
 SOURCE_DIRS = cmd pkg
 SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*")
-# repo
+# repo - keep module path matching go.mod for linker flags
 ORG := github.com/redhat-developer
 MODULEPATH = $(ORG)/mapt
 # Linker flags
@@ -99,7 +99,7 @@ oci-build: clean oci-build-amd64 oci-build-arm64
 .PHONY: oci-build-amd64
 oci-build-amd64: clean
 	# Build the container image for amd64
-	sudo ${CONTAINER_MANAGER} build --platform linux/amd64 --manifest $(IMG)-amd64 -f oci/Containerfile .
+	${CONTAINER_MANAGER} build --platform linux/amd64 --manifest $(IMG)-amd64 -f oci/Containerfile .
 
 # Build for arm64 architecture only
 .PHONY: oci-build-arm64
